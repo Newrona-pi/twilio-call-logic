@@ -53,10 +53,12 @@ class SerialCode(db.Model):
     
     code = db.Column(db.String(20), primary_key=True)
     audio_url = db.Column(db.String(500), nullable=False)
-    used = db.Column(db.Boolean, default=False, nullable=False)
+    # used = db.Column(db.Boolean, default=False, nullable=False) # 廃止
+    usage_count = db.Column(db.Integer, default=0, nullable=False) # 現在の使用回数
+    max_uses = db.Column(db.Integer, default=3, nullable=False)    # 最大使用可能回数
 
     def __repr__(self):
-        return f'<SerialCode {self.code}>'
+        return f'<SerialCode {self.code} ({self.usage_count}/{self.max_uses})>'
 
 # JSONファイル（初期データ/シードデータ用）
 DATA_FILE = 'serial_codes.json'
@@ -74,12 +76,14 @@ def init_db():
                     data = json.load(f)
                     
                 for code, info in data.items():
-                    # 既に存在しないか念のため確認（create_all直後なら不要だが安全のため）
+                    # 既に存在しないか念のため確認
                     if not SerialCode.query.get(code):
                         new_code = SerialCode(
                             code=code,
-                            audio_url=info['audio_url'],
-                            used=info['used']
+                            audio_url=info.get('audio_url'),
+                            # JSONに設定があればそれを使い、なければデフォルト設定
+                            usage_count=info.get('usage_count', 0),
+                            max_uses=info.get('max_uses', 3)
                         )
                         db.session.add(new_code)
                 
@@ -165,10 +169,10 @@ def check_code():
         response.hangup()
         return str(response)
         
-    elif serial_code.used:
-        # コードが既に使用済みの場合
+    elif serial_code.usage_count >= serial_code.max_uses:
+        # 回数制限に達している場合
         response.say(
-            'このシリアルコードは既に使用されています。',
+            'このシリアルコードは使用回数の上限に達しています。',
             language='ja-JP'
         )
         response.hangup()
@@ -261,60 +265,53 @@ def callback_process(code):
         language='ja-JP'
     )
     
-    # ★重要: 音声再生の指示を出した時点で「使用済み」にする
-    if not serial_code.used:
-        serial_code.used = True
+    # ★重要: 使用回数をカウントアップ
+    if serial_code.usage_count < serial_code.max_uses:
+        serial_code.usage_count += 1
         db.session.commit()
-        print(f"コード {code} を使用済みにしました (折り返し完了)")
+        print(f"コード {code} の使用回数を更新: {serial_code.usage_count}/{serial_code.max_uses}")
 
     return str(response)
-
 
 
 
 @app.route('/admin/reset_code/<code>')
 def reset_code(code):
     """
-    管理者用: 指定したシリアルコードを未使用に戻す
-    例: https://your-app.onrender.com/admin/reset_code/1234
+    管理者用: 指定したシリアルコードの使用回数をリセット
     """
     serial_code = SerialCode.query.get(code)
     
     if not serial_code:
         return f'エラー: コード "{code}" は存在しません。', 404
     
-    if not serial_code.used:
-        return f'コード "{code}" は既に未使用です。'
-    
-    serial_code.used = False
+    serial_code.usage_count = 0
     db.session.commit()
     
-    return f'コード "{code}" を未使用に戻しました。'
+    return f'コード "{code}" をリセットしました（使用回数 0/{serial_code.max_uses}）。'
 
 
 @app.route('/admin/reset_all')
 def reset_all():
     """
-    管理者用: すべてのシリアルコードを未使用に戻す
-    例: https://your-app.onrender.com/admin/reset_all
+    管理者用: すべてのシリアルコードの使用回数をリセット
     """
-    updated_count = SerialCode.query.filter_by(used=True).update({'used': False})
+    updated_count = SerialCode.query.update({'usage_count': 0})
     db.session.commit()
     
-    return f'{updated_count}個のコードを未使用に戻しました。'
+    return f'{updated_count}個のコードをリセットしました。'
 
 
 @app.route('/admin/list_codes')
 def list_codes():
     """
     管理者用: データベース内のすべてのシリアルコードを表示
-    例: https://your-app.onrender.com/admin/list_codes
     """
     codes = SerialCode.query.all()
     
-    result = '<h1>シリアルコード一覧</h1><table border="1"><tr><th>コード</th><th>音声URL</th><th>使用済み</th></tr>'
+    result = '<h1>シリアルコード一覧</h1><table border="1"><tr><th>コード</th><th>音声URL</th><th>使用状況</th></tr>'
     for code in codes:
-        result += f'<tr><td>{code.code}</td><td>{code.audio_url}</td><td>{"はい" if code.used else "いいえ"}</td></tr>'
+        result += f'<tr><td>{code.code}</td><td>{code.audio_url}</td><td>{code.usage_count} / {code.max_uses}</td></tr>'
     result += '</table>'
     
     return result
@@ -324,7 +321,6 @@ def list_codes():
 def update_from_json():
     """
     管理者用: serial_codes.json の内容でデータベースを更新
-    例: https://your-app.onrender.com/admin/update_from_json
     """
     if not os.path.exists(DATA_FILE):
         return f'エラー: {DATA_FILE} が見つかりません。', 404
@@ -340,15 +336,18 @@ def update_from_json():
         
         if serial_code:
             # 既存のコードを更新
-            serial_code.audio_url = info['audio_url']
-            serial_code.used = info['used']
+            serial_code.audio_url = info.get('audio_url')
+            # max_usesがJSONにあれば更新
+            if 'max_uses' in info:
+                serial_code.max_uses = info['max_uses']
             updated += 1
         else:
             # 新しいコードを追加
             new_code = SerialCode(
                 code=code,
-                audio_url=info['audio_url'],
-                used=info['used']
+                audio_url=info.get('audio_url'),
+                usage_count=info.get('usage_count', 0),
+                max_uses=info.get('max_uses', 3)
             )
             db.session.add(new_code)
             added += 1

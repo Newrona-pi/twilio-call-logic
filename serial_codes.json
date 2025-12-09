@@ -1,10 +1,10 @@
 {
     "1234": {
         "audio_url": "hayase.wav",
-        "used": false
+        "max_uses": 3
     },
     "5678": {
-        "audio_url": "loop100302.wav",
-        "used": false
+        "audio_url": "chirorunia.wav",
+        "max_uses": 3
     }
 }
