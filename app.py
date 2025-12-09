@@ -356,6 +356,17 @@ def update_from_json():
     
     return f'更新完了: {updated}個のコードを更新、{added}個のコードを追加しました。'
 
+@app.route('/admin/init_db_force')
+def init_db_force():
+    """
+    管理者用: データベースを強制的に再作成（初期化）する
+    注意: すべてのデータが消去され、serial_codes.jsonの内容で再構築されます。
+    スキーマ変更（カラム追加など）があった場合に実行してください。
+    """
+    db.drop_all()
+    init_db()
+    return 'データベースを強制初期化しました。新しいスキーマが適用されました。'
+
 
 
 
