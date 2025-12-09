@@ -66,31 +66,45 @@ DATA_FILE = 'serial_codes.json'
 def init_db():
     """データベースの初期化とシードデータの投入"""
     with app.app_context():
+        # テーブル作成（存在しない場合のみ）
         db.create_all()
         
-        # データが1件もない場合のみ、JSONからデータをロードする
-        if SerialCode.query.count() == 0:
-            print("データベースが空です。serial_codes.json から初期データを投入します...")
-            if os.path.exists(DATA_FILE):
-                with open(DATA_FILE, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    
-                for code, info in data.items():
-                    # 既に存在しないか念のため確認
-                    if not SerialCode.query.get(code):
-                        new_code = SerialCode(
-                            code=code,
-                            audio_url=info.get('audio_url'),
-                            # JSONに設定があればそれを使い、なければデフォルト設定
-                            usage_count=info.get('usage_count', 0),
-                            max_uses=info.get('max_uses', 3)
-                        )
-                        db.session.add(new_code)
-                
-                db.session.commit()
-                print("初期データの投入が完了しました。")
-            else:
-                print(f"警告: {DATA_FILE} が見つかりません。")
+        try:
+            # 試しにクエリを実行して、スキーマが整合しているか確認
+            # usage_countカラムがない場合、ここでエラーになるはず
+            if SerialCode.query.count() == 0:
+                print("データベースが空です。serial_codes.json から初期データを投入します...")
+                load_data_from_json()
+        except Exception as e:
+            # カラム不足などのエラーが出た場合、DBをリセットして再構築する
+            print(f"データベースエラー検知 (スキーマ不整合の可能性): {e}")
+            print("データベースを再構築します...")
+            db.drop_all()
+            db.create_all()
+            load_data_from_json()
+            print("データベースの再構築が完了しました。")
+
+def load_data_from_json():
+    """JSONからデータをロードする共通関数"""
+    if os.path.exists(DATA_FILE):
+        with open(DATA_FILE, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            
+        for code, info in data.items():
+            # 既に存在しないか念のため確認
+            if not SerialCode.query.get(code):
+                new_code = SerialCode(
+                    code=code,
+                    audio_url=info.get('audio_url'),
+                    usage_count=info.get('usage_count', 0),
+                    max_uses=info.get('max_uses', 3)
+                )
+                db.session.add(new_code)
+        
+        db.session.commit()
+        print("初期データの投入が完了しました。")
+    else:
+        print(f"警告: {DATA_FILE} が見つかりません。")
 
 # アプリ起動時にDB初期化を行う（本番ではコマンドで行うのが一般的だが簡易化のため）
 init_db()
