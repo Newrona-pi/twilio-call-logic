@@ -1,0 +1,10 @@
+{
+    "1234": {
+        "audio_url": "hayase.wav",
+        "used": false
+    },
+    "5678": {
+        "audio_url": "loop100302.wav",
+        "used": false
+    }
+}
