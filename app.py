@@ -17,6 +17,9 @@ from flask import Flask, request
 from twilio.twiml.voice_response import VoiceResponse, Gather
 import json
 import os
+import threading
+import time
+
 
 app = Flask(__name__)
 
@@ -210,7 +213,7 @@ def check_code():
 
     try:
         from twilio.rest import Client
-        client = Client(account_sid, auth_token)
+        # client = Client(account_sid, auth_token)
 
         # 折り返し時に実行させるTwiMLのURL (新しいエンドポイントを指定)
         # _external=True で絶対URLを生成
@@ -220,18 +223,29 @@ def check_code():
         if request.headers.get('X-Forwarded-Proto') == 'https':
             callback_url = callback_url.replace('http://', 'https://', 1)
 
-        print(f"折り返し発信を開始します: {user_phone_number} -> {callback_url}")
+        print(f"折り返し発信準備完了。60秒後に発信します: {user_phone_number} -> {callback_url}")
 
-        # 折り返し電話の発信
-        call = client.calls.create(
-            to=user_phone_number,
-            from_=twilio_number,
-            url=callback_url
-        )
+        # 60秒後に発信するバックグラウンド処理
+        def delayed_callback_run():
+            time.sleep(60)
+            try:
+                client = Client(account_sid, auth_token)
+                print(f"60秒経過。折り返し発信を実行: {user_phone_number}")
+                client.calls.create(
+                    to=user_phone_number,
+                    from_=twilio_number,
+                    url=callback_url
+                )
+            except Exception as e:
+                print(f"折り返し発信エラー(遅延実行内): {e}")
+
+        # スレッドを開始して遅延実行
+        thread = threading.Thread(target=delayed_callback_run)
+        thread.start()
 
         # 現在の通話に対してアナウンスして切断
         response.say(
-            '認証に成功しました。一度電話を切らせていただきます。すぐに折り返しお電話いたしますので、少々お待ちください。',
+            '認証に成功しました。一度電話を切らせていただきます。2分以内に折り返しお電話いたしますので、そのままお待ちください。',
             language='ja-JP'
         )
         response.hangup()
