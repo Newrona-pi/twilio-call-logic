@@ -238,7 +238,7 @@ def check_code():
 
         # 現在の通話に対してアナウンスして切断
         response.say(
-            '認証に成功しました。一度電話を切らせていただきます。2分以内に折り返しお電話いたしますので、そのままお待ちください。',
+            '認証しました、3分ほどお待ちください',
             language='ja-JP'
         )
         response.hangup()
@@ -280,11 +280,9 @@ def callback_process(code):
     # 音声を再生
     response.play(audio_url)
 
-    # 終了メッセージ
-    response.say(
-        'ご利用ありがとうございました。',
-        language='ja-JP'
-    )
+    # 音声再生終了後、3秒待機して切断
+    response.pause(length=3)
+    # TwiMLの最後に来ると自動的に切断されます
     
     # ★重要: 使用回数をカウントアップ
     if serial_code.usage_count < serial_code.max_uses:
@@ -365,8 +363,6 @@ def list_codes():
     </head>
     <body>
         <h1>シリアルコード管理ダッシュボード</h1>
-        <p><a href="/admin/reset_all" onclick="return confirm('本当に全てのコードをリセットしますか？');" class="btn btn-reset">全コードを一括リセット</a></p>
-        <p><a href="/admin/update_from_json" class="btn">JSONから設定を更新</a></p>
         <table>
             <tr>
                 <th>コード</th>
