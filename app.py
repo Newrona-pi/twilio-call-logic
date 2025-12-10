@@ -13,21 +13,13 @@ Twilio Programmable Voice - シリアルコード認証型音声配信サービ�
        (例: https://your-domain.com/voice)
 """
 
-from flask import Flask, request
-from twilio.twiml.voice_response import VoiceResponse, Gather
-import json
-import os
-import threading
-import time
-
-
-app = Flask(__name__)
-
 from flask import Flask, request, send_from_directory, url_for
 from twilio.twiml.voice_response import VoiceResponse, Gather
 from flask_sqlalchemy import SQLAlchemy
 import json
 import os
+import threading
+import time
 
 app = Flask(__name__)
 
@@ -56,7 +48,8 @@ class SerialCode(db.Model):
     
     code = db.Column(db.String(20), primary_key=True)
     audio_url = db.Column(db.String(500), nullable=False)
-    # used = db.Column(db.Boolean, default=False, nullable=False) # 廃止
+    # used column removed
+
     usage_count = db.Column(db.Integer, default=0, nullable=False) # 現在の使用回数
     max_uses = db.Column(db.Integer, default=3, nullable=False)    # 最大使用可能回数
 
