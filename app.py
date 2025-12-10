@@ -296,10 +296,36 @@ def callback_process(code):
 
 
 
+@app.route('/admin/set_usage', methods=['POST'])
+def set_usage():
+    """
+    管理者用: シリアルコードの使用回数を任意の値に変更
+    """
+    code = request.form.get('code')
+    new_usage = request.form.get('usage_count')
+    
+    if not code or new_usage is None:
+        return 'エラー: パラメータが不足しています。', 400
+        
+    serial_code = SerialCode.query.get(code)
+    if not serial_code:
+        return f'エラー: コード "{code}" は存在しません。', 404
+        
+    try:
+        serial_code.usage_count = int(new_usage)
+        db.session.commit()
+    except ValueError:
+        return 'エラー: 数値を入力してください。', 400
+        
+    return f'''
+    <p>コード "{code}" の使用回数を {serial_code.usage_count} に更新しました。</p>
+    <a href="/admin/list_codes">一覧に戻る</a>
+    '''
+
 @app.route('/admin/reset_code/<code>')
 def reset_code(code):
     """
-    管理者用: 指定したシリアルコードの使用回数をリセット
+    管理者用: 指定したシリアルコードの使用回数をリセット (0にする)
     """
     serial_code = SerialCode.query.get(code)
     
@@ -309,8 +335,78 @@ def reset_code(code):
     serial_code.usage_count = 0
     db.session.commit()
     
-    return f'コード "{code}" をリセットしました（使用回数 0/{serial_code.max_uses}）。'
+    return f'''
+    <p>コード "{code}" をリセットしました（使用回数 0/{serial_code.max_uses}）。</p>
+    <a href="/admin/list_codes">一覧に戻る</a>
+    '''
 
+@app.route('/admin/list_codes')
+def list_codes():
+    """
+    管理者用: データベース内のすべてのシリアルコードを表示 (ダッシュボード機能付き)
+    """
+    codes = SerialCode.query.order_by(SerialCode.code).all()
+    
+    html = '''
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <title>Admin Dashboard</title>
+        <style>
+            body { font-family: sans-serif; padding: 20px; }
+            table { border-collapse: collapse; width: 100%; max-width: 1000px; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+            th { background-color: #f2f2f2; }
+            tr:nth-child(even) { background-color: #f9f9f9; }
+            .btn { padding: 5px 10px; background-color: #007bff; color: white; text-decoration: none; border-radius: 4px; border: none; cursor: pointer; }
+            .btn-reset { background-color: #dc3545; }
+            .form-inline { display: flex; gap: 5px; align-items: center; }
+        </style>
+    </head>
+    <body>
+        <h1>シリアルコード管理ダッシュボード</h1>
+        <p><a href="/admin/reset_all" onclick="return confirm('本当に全てのコードをリセットしますか？');" class="btn btn-reset">全コードを一括リセット</a></p>
+        <p><a href="/admin/update_from_json" class="btn">JSONから設定を更新</a></p>
+        <table>
+            <tr>
+                <th>コード</th>
+                <th>音声URL</th>
+                <th>使用済み回数</th>
+                <th>残り回数</th>
+                <th>最大回数</th>
+                <th>操作 (使用回数変更)</th>
+                <th>操作 (リセット)</th>
+            </tr>
+    '''
+    
+    for c in codes:
+        remaining = c.max_uses - c.usage_count
+        html += f'''
+            <tr>
+                <td>{c.code}</td>
+                <td>{c.audio_url}</td>
+                <td style="font-weight: bold; color: {'red' if remaining <= 0 else 'green'};">{c.usage_count}</td>
+                <td>{remaining}</td>
+                <td>{c.max_uses}</td>
+                <td>
+                    <form action="/admin/set_usage" method="POST" class="form-inline">
+                        <input type="hidden" name="code" value="{c.code}">
+                        <input type="number" name="usage_count" value="{c.usage_count}" style="width: 60px;">
+                        <button type="submit" class="btn">更新</button>
+                    </form>
+                </td>
+                <td>
+                    <a href="/admin/reset_code/{c.code}" class="btn btn-reset">リセット(0)</a>
+                </td>
+            </tr>
+        '''
+    
+    html += '''
+        </table>
+    </body>
+    </html>
+    '''
+    return html
 
 @app.route('/admin/reset_all')
 def reset_all():
@@ -320,22 +416,10 @@ def reset_all():
     updated_count = SerialCode.query.update({'usage_count': 0})
     db.session.commit()
     
-    return f'{updated_count}個のコードをリセットしました。'
-
-
-@app.route('/admin/list_codes')
-def list_codes():
-    """
-    管理者用: データベース内のすべてのシリアルコードを表示
-    """
-    codes = SerialCode.query.all()
-    
-    result = '<h1>シリアルコード一覧</h1><table border="1"><tr><th>コード</th><th>音声URL</th><th>使用状況</th></tr>'
-    for code in codes:
-        result += f'<tr><td>{code.code}</td><td>{code.audio_url}</td><td>{code.usage_count} / {code.max_uses}</td></tr>'
-    result += '</table>'
-    
-    return result
+    return f'''
+    <p>{updated_count}個のコードをリセットしました。</p>
+    <a href="/admin/list_codes">一覧に戻る</a>
+    '''
 
 
 @app.route('/admin/update_from_json')
